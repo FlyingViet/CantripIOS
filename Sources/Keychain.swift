@@ -49,20 +49,20 @@ enum Keychain {
     }
 
     private static func credentialQuery(_ account: String) -> [String: Any] {
-        [
+        var q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
+        #if os(macOS)
+        q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        #endif
+        return q
     }
 
     static func set(_ value: String, for account: String) {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
+        let query = credentialQuery(account)
         SecItemDelete(query as CFDictionary)
         var add = query
         add[kSecValueData as String] = data
@@ -71,13 +71,9 @@ enum Keychain {
     }
 
     static func get(_ account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = credentialQuery(account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data, let s = String(data: data, encoding: .utf8) else { return nil }

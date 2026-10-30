@@ -1143,14 +1143,37 @@ private enum CantripRemoteCredentials {
     private static let account = "cantrip.remote.pairing-token"
     private static let service = "AgentGateway"
 
+    #if os(macOS)
+    private static var localTokenURLs: [URL] {
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return []
+        }
+        return [
+            appSupport.appendingPathComponent("Cantrip/remote-token"),
+            appSupport.appendingPathComponent("CantripGatewayMac/remote-token"),
+        ]
+    }
+    #endif
+
     static func loadToken() -> String? {
-        let query: [String: Any] = [
+        #if os(macOS)
+        for url in localTokenURLs {
+            if let raw = try? String(contentsOf: url, encoding: .utf8) {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        #endif
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
             kSecAttrService as String: service,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        #if os(macOS)
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        #endif
         var result: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data,
@@ -1161,12 +1184,26 @@ private enum CantripRemoteCredentials {
     }
 
     static func saveToken(_ token: String) throws {
+        #if os(macOS)
+        var wroteLocal = false
+        for url in localTokenURLs {
+            let dir = url.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            if (try? Data(token.utf8).write(to: url, options: .atomic)) != nil {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                wroteLocal = true
+            }
+        }
+        #endif
         let data = Data(token.utf8)
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
             kSecAttrService as String: service,
         ]
+        #if os(macOS)
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        #endif
         let update: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -1174,6 +1211,9 @@ private enum CantripRemoteCredentials {
         let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
         if updateStatus == errSecSuccess { return }
         guard updateStatus == errSecItemNotFound else {
+            #if os(macOS)
+            if wroteLocal { return }
+            #endif
             throw CantripRemoteError.keychain(
                 "The pairing token could not be updated in Keychain (error \(updateStatus))."
             )
@@ -1183,6 +1223,9 @@ private enum CantripRemoteCredentials {
         item.merge(update) { _, new in new }
         let addStatus = SecItemAdd(item as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
+            #if os(macOS)
+            if wroteLocal { return }
+            #endif
             throw CantripRemoteError.keychain(
                 "The pairing token could not be saved in Keychain (error \(addStatus))."
             )
@@ -1190,16 +1233,28 @@ private enum CantripRemoteCredentials {
     }
 
     static func removeToken() throws {
-        let query: [String: Any] = [
+        #if os(macOS)
+        for url in localTokenURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        #endif
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
             kSecAttrService as String: service,
         ]
+        #if os(macOS)
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        #endif
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
+            #if os(macOS)
+            return
+            #else
             throw CantripRemoteError.keychain(
                 "The pairing token could not be removed from Keychain (error \(status))."
             )
+            #endif
         }
     }
 }
