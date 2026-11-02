@@ -1,5 +1,9 @@
 # Hermes — iOS client (Cantrip Agent, formerly AgentGateway)
 
+> **Moved.** Cantrip Agent now lives in [FlyingViet/cantrip](https://github.com/FlyingViet/cantrip/tree/main/Clients/CantripIOS)
+> under `Clients/CantripIOS`, with its full history. This repository is archived (read-only); TestFlight builds
+> come from cantrip's `ios-testflight.yml`. Open issues and pull requests there.
+
 This repository is [FlyingViet/CantripIOS](https://github.com/FlyingViet/CantripIOS),
 renamed from `Hermes` on 2026-10-25 (GitHub redirects the old URL). The Xcode
 project, scheme and Swift module are still named Hermes.
